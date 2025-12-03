@@ -36,30 +36,39 @@
 </template>
 
 <script>
+import getHangmanKeyword from "../kuhlschum.js";
+
 export default {
   name: "Hangman",
   data() {
     return {
-      word: getHangmanKeyWord(),
+      word: "",
       guessedLetters: [],
       wrongGuesses: 0,
       maxGuesses: 8,
       alphabet: "abcdefghijklmnopqrstuvwxyz".split("")
     };
   },
+
+  async mounted() {
+    this.word = await getHangmanKeyword();
+  },
+
   computed: {
     wordArray() {
-      return this.word.split("");
+      return this.word ? this.word.split("") : [];
     },
     won() {
-      return this.wordArray.every((l) => this.guessedLetters.includes(l));
+      return this.word && this.wordArray.every((l) => this.guessedLetters.includes(l));
     },
     gameOver() {
       return this.won || this.wrongGuesses > this.maxGuesses;
     }
   },
+
   methods: {
     guess(letter) {
+      if (!this.word) return;
       if (this.guessedLetters.includes(letter) || this.gameOver) return;
 
       this.guessedLetters.push(letter);
@@ -68,13 +77,16 @@ export default {
         this.wrongGuesses++;
       }
     },
+
     resetGame() {
       this.guessedLetters = [];
       this.wrongGuesses = 0;
+      this.mounted();
     }
   }
 };
 </script>
+
 
 <style scoped>
 .hangman {
