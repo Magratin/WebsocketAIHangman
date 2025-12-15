@@ -36,56 +36,105 @@
 </template>
 
 <script>
-import getHangmanKeyword from "../kuhlschum.js";
-
 export default {
   name: "Hangman",
+
   data() {
     return {
+      socket: null,
+
+      // game state (comes from server)
       word: "",
       guessedLetters: [],
       wrongGuesses: 0,
       maxGuesses: 8,
+
       alphabet: "abcdefghijklmnopqrstuvwxyz".split("")
     };
   },
 
-  async mounted() {
-    this.word = await getHangmanKeyword();
+  mounted() {
+    this.connectWebSocket();
+  },
+
+  beforeUnmount() {
+    if (this.socket) {
+      this.socket.close();
+    }
+  },
+
+  methods: {
+    connectWebSocket() {
+      this.socket = new WebSocket("ws://localhost:8080");
+
+      this.socket.onopen = () => {
+        console.log("WebSocket connected");
+      };
+
+      this.socket.onmessage = (event) => {
+        const message = JSON.parse(event.data);
+
+        if (message.type === "state") {
+          // Sync full game state from server
+          this.word = message.payload.word;
+          this.guessedLetters = message.payload.guessedLetters;
+          this.wrongGuesses = message.payload.wrongGuesses;
+          this.maxGuesses = message.payload.maxGuesses;
+        }
+      };
+
+      this.socket.onerror = (err) => {
+        console.error("WebSocket error:", err);
+      };
+
+      this.socket.onclose = () => {
+        console.log("WebSocket disconnected");
+      };
+    },
+
+    guess(letter) {
+      if (this.gameOver || !this.socket) return;
+
+      this.socket.send(
+          JSON.stringify({
+            type: "guess",
+            payload: letter
+          })
+      );
+    },
+
+    resetGame() {
+      if (!this.socket) return;
+
+      this.socket.send(
+          JSON.stringify({
+            type: "reset"
+          })
+      );
+    }
   },
 
   computed: {
     wordArray() {
       return this.word ? this.word.split("") : [];
     },
+
     won() {
-      return this.word && this.wordArray.every((l) => this.guessedLetters.includes(l));
+      return (
+          this.word &&
+          this.wordArray.every(letter =>
+              this.guessedLetters.includes(letter)
+          )
+      );
     },
+
     gameOver() {
       return this.won || this.wrongGuesses > this.maxGuesses;
-    }
-  },
-
-  methods: {
-    guess(letter) {
-      if (!this.word) return;
-      if (this.guessedLetters.includes(letter) || this.gameOver) return;
-
-      this.guessedLetters.push(letter);
-
-      if (!this.word.includes(letter)) {
-        this.wrongGuesses++;
-      }
-    },
-
-    resetGame() {
-      this.guessedLetters = [];
-      this.wrongGuesses = 0;
-      this.mounted();
     }
   }
 };
 </script>
+
 
 
 <style scoped>
