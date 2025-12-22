@@ -1,22 +1,24 @@
 <template>
   <div class="hangman">
-    <div class="header">
-      <h2>Hangman</h2>
-      <p class="subtitle">Wort erraten</p>
+    <div v-if="loading" class="loading-overlay">
+      <div class="loading-spinner">
+        <div class="spinner"></div>
+        <p>Neues Wort wird geladen...</p>
+      </div>
     </div>
 
     <div v-if="!joined" class="lobby">
       <div class="lobby-card">
-        <h3>Join Game</h3>
+        <h3>Spiel betreten</h3>
         <input v-model="name" placeholder="Your name" class="input-field" />
         <input v-model="room" placeholder="Room name" class="input-field" />
-        <button @click="joinGame" class="btn-primary">Join Game</button>
+        <button @click="joinGame" class="btn-primary" :disabled="loading">Spiel betreten</button>
       </div>
     </div>
 
     <div v-else class="game-container">
       <div class="players-section">
-        <h3>Players</h3>
+        <h3>Spieler</h3>
         <div class="players-list">
           <span
               v-for="(p, i) in players"
@@ -30,8 +32,8 @@
       </div>
 
       <div class="turn-status">
-        <p v-if="myTurn" class="my-turn">Your turn to guess!</p>
-        <p v-else class="waiting">Waiting for {{ players[currentTurn] }}...</p>
+        <p v-if="myTurn" class="my-turn">Errate!</p>
+        <p v-else class="waiting">warten auf {{ players[currentTurn] }}...</p>
       </div>
 
       <div class="hangman-visual">
@@ -69,7 +71,7 @@
         <button
             v-for="letter in alphabet"
             :key="letter"
-            :disabled="guessedLetters.includes(letter) || gameOver"
+            :disabled="guessedLetters.includes(letter) || gameOver || loading"
             :class="['key', {
               used: guessedLetters.includes(letter),
               correct: guessedLetters.includes(letter) && wordArray.includes(letter),
@@ -84,15 +86,14 @@
       <div class="status-modal" v-if="gameOver">
         <div class="modal-content" :class="{ won: won, lost: !won }">
           <div v-if="won" class="result">
-            <h3>Congratulations!</h3>
-            <p>You won the game!</p>
+            <h3>Glückwunsch!</h3>
+            <p>Du hast das Spiel gewonnen!</p>
           </div>
           <div v-else class="result">
-
-            <h3>Game Over!</h3>
-            <p>The word was <strong>"{{ word }}"</strong></p>
+            <h3>Verkackt!</h3>
+            <p>Das Wort war <strong>"{{ word }}"</strong></p>
           </div>
-          <button @click="resetGame" class="btn-reset">Play Again</button>
+          <button @click="resetGame" class="btn-reset" :disabled="loading">Neustart</button>
         </div>
       </div>
     </div>
@@ -107,12 +108,10 @@ export default {
     return {
       socket: null,
 
-      // lobby
       name: "",
       room: "",
       joined: false,
 
-      // game state
       word: "",
       guessedLetters: [],
       wrongGuesses: 0,
@@ -120,7 +119,10 @@ export default {
       players: [],
       currentTurn: 0,
 
-      alphabet: "abcdefghijklmnopqrstuvwxyz".split("")
+      alphabet: "abcdefghijklmnopqrstuvwxyz".split(""),
+
+
+      loading: false
     };
   },
 
@@ -145,6 +147,7 @@ export default {
 
   methods: {
     joinGame() {
+      this.loading = true;
       this.socket = new WebSocket("ws://localhost:8080");
 
       this.socket.onopen = () => {
@@ -158,14 +161,30 @@ export default {
 
       this.socket.onmessage = (e) => {
         const msg = JSON.parse(e.data);
+
         if (msg.type === "state") {
           Object.assign(this, msg.payload);
+          this.loading = false;
+        } else if (msg.type === "joined") {
+          this.loading = false;
+        } else if (msg.type === "error") {
+          console.error("Server error:", msg.payload);
+          this.loading = false;
         }
+      };
+
+      this.socket.onerror = (error) => {
+        console.error("WebSocket error:", error);
+        this.loading = false;
+      };
+
+      this.socket.onclose = () => {
+        this.loading = false;
       };
     },
 
     guess(letter) {
-      if (!this.myTurn || this.gameOver) return;
+      if (!this.myTurn || this.gameOver || this.loading) return;
 
       this.socket.send(JSON.stringify({
         type: "guess",
@@ -174,6 +193,7 @@ export default {
     },
 
     resetGame() {
+      this.loading = true;
       this.socket.send(JSON.stringify({ type: "reset" }));
     }
   }
@@ -181,9 +201,45 @@ export default {
 </script>
 
 <style scoped>
-* {
-  box-sizing: border-box;
+.loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
 }
+
+.loading-spinner {
+  background: white;
+  padding: 2rem;
+  border-radius: 8px;
+  text-align: center;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.spinner {
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #3498db;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 1rem;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+ * {
+   box-sizing: border-box;
+ }
 
 .hangman {
   min-height: 100vh;
